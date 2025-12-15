@@ -65,6 +65,24 @@ class DroneMission:
         center_region = depth_img[center_h-crop:center_h+crop, center_w-crop:center_w+crop]
         return np.min(center_region)
 
+    def detect_people(self):
+        responses = self.client.simGetImages([
+            airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)
+        ], vehicle_name=VEHICLE_NAME)
+        
+        if not responses: return 0
+            
+        img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8)
+        img_rgb = img1d.reshape(responses[0].height, responses[0].width, 3)
+        
+        results = self.model(img_rgb, verbose=False, conf=0.5)
+        count = 0
+        for r in results:
+            for box in r.boxes:
+                if int(box.cls[0]) == self.person_class_id:
+                    count += 1
+        return count
+
     def manage_altitude(self):
         pos = self.get_position()
         current_z = pos.z_val
@@ -75,7 +93,41 @@ class DroneMission:
                 self.client.moveByVelocityZAsync(0, 0, TARGET_ALTITUDE, 0.5, vehicle_name=VEHICLE_NAME).join()
         elif current_z > (TARGET_ALTITUDE + 0.5):
             self.client.moveToZAsync(TARGET_ALTITUDE, 1, vehicle_name=VEHICLE_NAME).join()
-            
+
+    def handle_people_detection(self):
+        print("!!! Person detected! Stopping to investigate...")
+        self.client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=VEHICLE_NAME).join()
+        time.sleep(1)
+        
+        count = self.detect_people()
+        if count > 0:
+            # --- LOGGING DATA ---
+            pos = self.get_position()
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            log_entry = {
+                "Time": timestamp,
+                "X": round(pos.x_val, 2),
+                "Y": round(pos.y_val, 2),
+                "Z": round(pos.z_val, 2),
+                "Count": count
+            }
+            self.detection_logs.append(log_entry)
+            print(f"--> Logged: {count} people at Location (X:{log_entry['X']}, Y:{log_entry['Y']})")
+            # --------------------
+
+            print("Investigating...")
+            start_inv = time.time()
+            while time.time() - start_inv < 3.0:
+                if self.get_front_depth() < SAFE_DISTANCE: 
+                    print("Obstacle in investigation path.")
+                    break
+                
+                yaw = self.get_yaw()
+                vx = math.cos(yaw) * INVESTIGATE_SPEED
+                vy = math.sin(yaw) * INVESTIGATE_SPEED
+                self.client.moveByVelocityZAsync(vx, vy, TARGET_ALTITUDE, 0.2, vehicle_name=VEHICLE_NAME).join()
+        print("Resuming mission.")
+    
     def find_alternate_route(self):
         print("Obstacle detected! Finding alternate route...")
         self.client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=VEHICLE_NAME).join()
