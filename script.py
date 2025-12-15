@@ -64,7 +64,40 @@ class DroneMission:
         crop = 50
         center_region = depth_img[center_h-crop:center_h+crop, center_w-crop:center_w+crop]
         return np.min(center_region)
-
+    def find_alternate_route(self):
+        print("Obstacle detected! Finding alternate route...")
+        self.client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=VEHICLE_NAME).join()
+        
+        original_yaw_deg = math.degrees(self.get_yaw())
+        search_angles = [30, -30, 60, -60, 90, -90, 120, -120]
+        path_found = False
+        safe_heading_rad = 0
+        
+        for angle in search_angles:
+            target_yaw = original_yaw_deg + angle
+            if target_yaw > 180: target_yaw -= 360
+            elif target_yaw < -180: target_yaw += 360
+            
+            self.client.rotateToYawAsync(target_yaw, 1, vehicle_name=VEHICLE_NAME).join()
+            if self.get_front_depth() > SAFE_DISTANCE:
+                path_found = True
+                safe_heading_rad = math.radians(target_yaw)
+                break
+        
+        if path_found:
+            vx = math.cos(safe_heading_rad) * FLIGHT_SPEED
+            vy = math.sin(safe_heading_rad) * FLIGHT_SPEED
+            self.client.moveByVelocityZAsync(vx, vy, TARGET_ALTITUDE, 1, vehicle_name=VEHICLE_NAME).join()
+        else:
+            print("Blocked! Ascending...")
+            current_z = self.get_position().z_val
+            new_z = current_z - 3.0 
+            self.client.moveToZAsync(new_z, 2, vehicle_name=VEHICLE_NAME).join()
+            
+            yaw = self.get_yaw()
+            vx = math.cos(yaw) * FLIGHT_SPEED
+            vy = math.sin(yaw) * FLIGHT_SPEED
+            self.client.moveByVelocityZAsync(vx, vy, new_z, 2, vehicle_name=VEHICLE_NAME).join()
 
 if __name__ == "__main__":
     points = [
