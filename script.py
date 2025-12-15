@@ -64,6 +64,18 @@ class DroneMission:
         crop = 50
         center_region = depth_img[center_h-crop:center_h+crop, center_w-crop:center_w+crop]
         return np.min(center_region)
+
+    def manage_altitude(self):
+        pos = self.get_position()
+        current_z = pos.z_val
+        ground_dist = self.get_ground_distance()
+
+        if current_z < (TARGET_ALTITUDE - 0.5): 
+            if ground_dist > 3.5:
+                self.client.moveByVelocityZAsync(0, 0, TARGET_ALTITUDE, 0.5, vehicle_name=VEHICLE_NAME).join()
+        elif current_z > (TARGET_ALTITUDE + 0.5):
+            self.client.moveToZAsync(TARGET_ALTITUDE, 1, vehicle_name=VEHICLE_NAME).join()
+            
     def find_alternate_route(self):
         print("Obstacle detected! Finding alternate route...")
         self.client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=VEHICLE_NAME).join()
