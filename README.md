@@ -25,7 +25,7 @@ The drone executes a logical loop divided into **0.1-second time steps**:
     * If Left/Right are blocked -> **Climb Up** and move forward.
 
 ## Video Demo
-[YouTube Link Pending]
+https://youtu.be/E_QrVEjBfwA
 
 ## Contributors
 
