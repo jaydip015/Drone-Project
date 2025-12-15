@@ -162,6 +162,72 @@ class DroneMission:
             vx = math.cos(yaw) * FLIGHT_SPEED
             vy = math.sin(yaw) * FLIGHT_SPEED
             self.client.moveByVelocityZAsync(vx, vy, new_z, 2, vehicle_name=VEHICLE_NAME).join()
+    def save_mission_report(self):
+        """Saves logs to CSV and prints summary."""
+        print("\n" + "="*40)
+        print("       MISSION SUMMARY REPORT       ")
+        print("="*40)
+        
+        if not self.detection_logs:
+            print("No people were detected during this mission.")
+            return
+
+        # 1. Save to CSV
+        try:
+            with open(CSV_FILENAME, mode='w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=["Time", "X", "Y", "Z", "Count"])
+                writer.writeheader()
+                writer.writerows(self.detection_logs)
+            print(f"Report saved to: {CSV_FILENAME}")
+        except Exception as e:
+            print(f"Error saving CSV: {e}")
+
+        # 2. Print to Terminal
+        print(f"{'Time':<10} | {'X':<8} | {'Y':<8} | {'Count':<5}")
+        print("-" * 40)
+        for entry in self.detection_logs:
+            print(f"{entry['Time']:<10} | {entry['X']:<8} | {entry['Y']:<8} | {entry['Count']:<5}")
+        print("="*40 + "\n")
+
+    def fly_mission(self, waypoints):
+        print(f"Taking off... Climbing to {TARGET_ALTITUDE}m")
+        self.client.takeoffAsync(vehicle_name=VEHICLE_NAME).join()
+        self.client.moveToZAsync(TARGET_ALTITUDE, 3, vehicle_name=VEHICLE_NAME).join()
+
+        for idx, point in enumerate(waypoints):
+            print(f"--- Heading to Waypoint {idx+1}: ({point.x_val}, {point.y_val}) ---")
+            
+            while True:
+                self.manage_altitude()
+                pos = self.get_position()
+                
+                dx = point.x_val - pos.x_val
+                dy = point.y_val - pos.y_val
+                dist_to_target = math.sqrt(dx*dx + dy*dy)
+                
+                if dist_to_target < 3.0: 
+                    print(f"Waypoint {idx+1} reached.")
+                    break
+                
+                if self.detect_people() > 0:
+                    self.handle_people_detection()
+
+                if self.get_front_depth() < SAFE_DISTANCE:
+                    self.find_alternate_route()
+                else:
+                    vx = (dx / dist_to_target) * FLIGHT_SPEED
+                    vy = (dy / dist_to_target) * FLIGHT_SPEED
+                    yaw_target = math.atan2(dy, dx)
+                    yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=math.degrees(yaw_target))
+                    
+                    self.client.moveByVelocityZAsync(vx, vy, pos.z_val, 0.2, yaw_mode=yaw_mode, vehicle_name=VEHICLE_NAME).join()
+
+        # Mission Ended
+        self.save_mission_report()
+        
+        print("Mission Complete. Landing.")
+        self.client.landAsync(vehicle_name=VEHICLE_NAME).join()
+        self.client.armDisarm(False, vehicle_name=VEHICLE_NAME)
 
 if __name__ == "__main__":
     points = [
