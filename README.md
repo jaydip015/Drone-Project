@@ -31,6 +31,6 @@ The drone executes a logical loop divided into **0.1-second time steps**:
 
 | Name | Roll Number |
 | :--- | :--- |
-| **Chaudhary Darshil** | 206125005 |
+| **Chaudhari Darshil** | 206125005 |
 | **Chavda Jaydip** | 206125008 |
 | **Pratyush Mishara** | 206125021 |
